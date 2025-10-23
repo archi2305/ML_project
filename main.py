@@ -20,7 +20,7 @@ except Exception as e:
 print(df.head())
 
 # Check info about columns (note: df.info() prints and returns None)
-df.info()
+print(df.info())
 
 # Summary statistics
 print(df.describe())
