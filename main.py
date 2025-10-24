@@ -49,6 +49,8 @@ df_processed = pd.get_dummies(df_cleaned, columns=text_features, drop_first=True
 
 
 print(df_processed.head(3))
+# Save the column structure for future use (Flask needs it)
+joblib.dump(df_processed.columns, os.path.join(output_folder, "columns.joblib"))
 
 
 if 'Performance_Score' not in df_processed.columns:
