@@ -1,100 +1,76 @@
+# ---------------------------------------------
+# Corporate Resource Optimization Dashboard
+# ---------------------------------------------
 import streamlit as st
-import pandas as pd
 import requests
+import pandas as pd
 import altair as alt
 
-# -----------------------------
-# Streamlit Page Config
-# -----------------------------
-st.set_page_config(
-    page_title="Corporate Resource Optimization Dashboard",
-    page_icon="💼",
-    layout="centered",
-)
+# Streamlit page config
+st.set_page_config(page_title="Corporate Resource Optimization", layout="wide")
 
-# -----------------------------
-# Title
-# -----------------------------
-st.title("💼 Corporate Resource Optimization Dashboard")
-st.markdown("### Predict employee performance based on workload and other parameters.")
+st.title("🏢 Corporate Resource Optimization Dashboard")
+st.markdown("Predict employee performance based on workload and other parameters.")
 
-# -----------------------------
-# Input Form
-# -----------------------------
-st.markdown("---")
-st.subheader("🧾 Enter Employee Data")
-
+# ---------------- USER INPUTS ----------------
 col1, col2 = st.columns(2)
 
 with col1:
-    department = st.number_input("Department", min_value=1, max_value=10, step=1)
-    hours_worked = st.number_input("Hours Worked", min_value=1, max_value=100, step=1)
-    budget_used = st.number_input("Budget Used (0-1 scale)", min_value=0.0, max_value=1.0, step=0.01)
+    department = st.selectbox("Department", [1, 2, 3, 4, 5])
+    hours = st.number_input("Work Hours Per Week", min_value=20, max_value=80, value=40)
+    budget = st.number_input("Monthly Salary", min_value=10000, max_value=150000, value=50000)
+    education = st.number_input("Education Level (1-3)", min_value=1, max_value=3, value=2)
 
 with col2:
     gender = st.selectbox("Gender", ["Male", "Female"])
-    education_level = st.number_input("Education Level (1-3)", min_value=1, max_value=3, step=1)
     resigned = st.selectbox("Resigned", ["No", "Yes"])
+    team_size = st.number_input("Team Size", min_value=1, max_value=20, value=5)
+    overtime = st.number_input("Overtime Hours", min_value=0, max_value=50, value=5)
 
-# Convert gender/resigned to numeric
-gender_val = 1 if gender == "Male" else 0
-resigned_val = 1 if resigned == "Yes" else 0
-
-# Button
+# ---------------- PREDICTION ----------------
 if st.button("🚀 Predict Performance"):
+    # Prepare JSON
     input_data = {
         "Department": department,
-        "HoursWorked": hours_worked,
-        "BudgetUsed": budget_used,
-        "Gender": gender_val,
-        "Education_Level": education_level,
-        "Resigned": resigned_val
+        "Gender": gender,
+        "Work_Hours_Per_Week": hours,
+        "Monthly_Salary": budget,
+        "Education_Level": education,
+        "Resigned": resigned,
+        "Team_Size": team_size,
+        "Overtime_Hours": overtime
     }
 
     try:
         response = requests.post("http://127.0.0.1:5000/predict", json=input_data)
         result = response.json()
 
-        if result["status"] == "success":
-            st.success(
-                f"✅ Predicted Performance Score: {result['prediction']} ({result['performance_label']})"
-            )
+        if "prediction" in result:
+            st.success(f"✅ Predicted Performance Score: {result['prediction']}")
         else:
-            st.warning(f"⚠️ API Error: {result['message']}")
+            st.error(f"⚠️ API Error: {result.get('error', 'Unknown error')}")
 
     except Exception as e:
-        st.error(f"❌ Error connecting to API: {e}")
+        st.error(f"❌ Connection error: {e}")
 
-# -----------------------------
-# Example Visualization
-# -----------------------------
+# ---------------- OPTIONAL: VISUALIZATION ----------------
 st.markdown("---")
-st.subheader("📊 Example Past Data (Simulated)")
+st.subheader("📈 Example Past Data (Simulated)")
+example_data = pd.DataFrame({
+    "Department": [1, 2, 3, 2, 1],
+    "Work_Hours_Per_Week": [40, 38, 42, 36, 45],
+    "Monthly_Salary": [60000, 75000, 55000, 68000, 72000],
+    "Performance_Score": [3, 4, 5, 3, 4]
+})
+st.dataframe(example_data)
 
-# Example Dataset
-data = {
-    "Department": [1, 2, 3, 2, 4, 1],
-    "HoursWorked": [40, 38, 45, 50, 42, 36],
-    "BudgetUsed": [0.6, 0.7, 0.8, 0.9, 0.5, 0.4],
-    "PerformanceScore": [3, 4, 5, 4, 2, 3]
-}
-df = pd.DataFrame(data)
-
-st.dataframe(df)
-
-# Chart
-chart = (
-    alt.Chart(df)
-    .mark_bar()
-    .encode(
-        x="HoursWorked:Q",
-        y="PerformanceScore:Q",
-        color="Department:N",
-        tooltip=["Department", "HoursWorked", "PerformanceScore"]
+try:
+    chart = (
+        alt.Chart(example_data)
+        .mark_bar()
+        .encode(x="Work_Hours_Per_Week", y="Performance_Score", color="Department:N")
+        .properties(width=600, height=300)
     )
-    .properties(width=600, height=300)
-)
-
-st.altair_chart(chart, use_container_width=True)
-
-st.caption("📈 The chart shows how working hours affect performance scores.")
+    st.altair_chart(chart)
+except Exception as e:
+    st.warning(f"Visualization Error: {e}")

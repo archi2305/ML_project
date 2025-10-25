@@ -1,5 +1,5 @@
 # ---------------------------------------------
-# Corporate Resource Optimization - ML Pipeline (Stable RandomForest Version)
+# Corporate Resource Optimization - ML Pipeline (Final Stable Version)
 # ---------------------------------------------
 import pandas as pd
 import numpy as np
@@ -31,28 +31,21 @@ df_cleaned = df.drop(columns=irrelevant_cols, errors='ignore')
 df_cleaned.dropna(inplace=True)
 print("✅ Data cleaned:", df_cleaned.shape)
 
-# ---------------- AUTO-DETECT COLUMN NAMES ----------------
-def find_col(df, possible_names):
-    """Finds a matching column name regardless of spaces or case."""
-    for col in df.columns:
-        for name in possible_names:
-            if col.strip().replace(" ", "").lower() == name.lower():
-                return col
-    return None
-
-hours_col = find_col(df_cleaned, ['HoursWorked', 'Hours Worked', 'WorkHours', 'Hours'])
-budget_col = find_col(df_cleaned, ['BudgetUsed', 'Budget Used', 'UsedBudget', 'Budget'])
-
-if not hours_col or not budget_col:
-    raise KeyError("Could not find 'HoursWorked' or 'BudgetUsed' columns in the dataset!")
-
-print(f"✅ Found Hours Column: {hours_col}")
-print(f"✅ Found Budget Column: {budget_col}")
+# ---------------- SELECT CORRECT COLUMNS ----------------
+# Based on your dataset, these columns exist:
+hours_col = 'Work_Hours_Per_Week'
+budget_col = 'Monthly_Salary'
 
 # ---------------- FEATURE ENGINEERING ----------------
 df_cleaned['Efficiency'] = df_cleaned[hours_col] / (df_cleaned[budget_col] + 0.1)
 df_cleaned['WorkBudgetRatio'] = df_cleaned[hours_col] * df_cleaned[budget_col]
-print("\n✅ Feature Engineering Added: ['Efficiency', 'WorkBudgetRatio']")
+df_cleaned['EngagementScore'] = (
+    df_cleaned['Projects_Handled'] +
+    df_cleaned['Training_Hours'] -
+    df_cleaned['Sick_Days'] +
+    df_cleaned['Overtime_Hours']
+)
+print("\n✅ Feature Engineering Added: ['Efficiency', 'WorkBudgetRatio', 'EngagementScore']")
 
 # ---------------- ENCODE CATEGORICAL FEATURES ----------------
 text_features = ['Department', 'Gender', 'Education_Level', 'Resigned']
