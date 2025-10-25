@@ -13,44 +13,137 @@ st.title("🏢 Corporate Resource Optimization Dashboard")
 st.markdown("Predict employee performance based on workload and other parameters.")
 
 # ---------------- USER INPUTS ----------------
-col1, col2 = st.columns(2)
+# Split inputs into tabs for better organization
+tab_personal, tab_work, tab_performance = st.tabs(["👤 Personal", "💼 Work", "📊 Performance"])
 
-with col1:
-    department = st.selectbox("Department", [1, 2, 3, 4, 5])
-    hours = st.number_input("Work Hours Per Week", min_value=20, max_value=80, value=40)
-    budget = st.number_input("Monthly Salary", min_value=10000, max_value=150000, value=50000)
-    education = st.number_input("Education Level (1-3)", min_value=1, max_value=3, value=2)
+with tab_personal:
+    col1, col2 = st.columns(2)
+    with col1:
+        age = st.number_input("Age", 
+            min_value=22, max_value=60, value=41,
+            help="Range: 22-60 years (mean: 41)"
+        )
+        gender = st.selectbox("Gender", ["Female", "Male", "Other"])
+        education = st.selectbox("Education Level", ["Bachelor", "High School", "Master", "PhD"], index=0)
+    with col2:
+        resigned = st.selectbox("Resigned", ["No", "Yes"])  # will be converted to boolean when sent
+        promotions = st.number_input("Promotions", 
+            min_value=0, max_value=10, value=0,
+            help="Number of career promotions"
+        )
 
-with col2:
-    gender = st.selectbox("Gender", ["Male", "Female"])
-    resigned = st.selectbox("Resigned", ["No", "Yes"])
-    team_size = st.number_input("Team Size", min_value=1, max_value=20, value=5)
-    overtime = st.number_input("Overtime Hours", min_value=0, max_value=50, value=5)
+with tab_work:
+    col1, col2 = st.columns(2)
+    with col1:
+        department = st.selectbox("Department", [
+            "Customer Support",
+            "Engineering",
+            "Finance",
+            "HR",
+            "IT",
+            "Legal",
+            "Marketing",
+            "Operations",
+            "Sales",
+        ])
+        years_at_company = st.number_input("Years at Company", 
+            min_value=0, max_value=10, value=4,
+            help="Range: 0-10 years (mean: 4.5)"
+        )
+        hours = st.number_input("Work Hours Per Week", 
+            min_value=30, max_value=60, value=45,
+            help="Range: 30-60 hours/week (mean: 45)"
+        )
+        overtime = st.number_input("Overtime Hours", 
+            min_value=0, max_value=29, value=15,
+            help="Range: 0-29 hours (mean: 14.5)"
+        )
+        sick_days = st.number_input("Sick Days Taken", 
+            min_value=0, max_value=14, value=7,
+            help="Range: 0-14 days (mean: 7)"
+        )
+    with col2:
+        budget = st.number_input("Monthly Salary", 
+            min_value=3850, max_value=9000, value=6400,
+            help="Range: 3,850-9,000 (mean: 6,400). Strong predictor of performance."
+        )
+        team_size = st.number_input("Team Size", 
+            min_value=1, max_value=19, value=10,
+            help="Range: 1-19 members (mean: 10)"
+        )
+        projects = st.number_input("Projects Handled",
+            min_value=0, max_value=49, value=24,
+            help="Range: 0-49 projects (mean: 24)"
+        )
+        remote_freq = st.number_input("Remote Work Frequency",
+            min_value=0, max_value=100, value=50,
+            help="Range: 0-100% (mean: 50%)"
+        )
+        training = st.number_input("Training Hours",
+            min_value=0, max_value=99, value=50,
+            help="Range: 0-99 hours (mean: 50)"
+        )
+
+with tab_performance:
+    col1, col2 = st.columns(2)
+    with col1:
+        satisfaction = st.number_input("Employee Satisfaction Score",
+            min_value=1, max_value=100, value=75,
+            help="Employee satisfaction rating (1-100)"
+        )
 
 # ---------------- PREDICTION ----------------
 if st.button("🚀 Predict Performance"):
     # Prepare JSON
+    # Convert Resigned to boolean and send textual categorical values so the backend can one-hot encode
     input_data = {
-        "Department": department,
+        # Personal
+        "Age": float(age),
         "Gender": gender,
-        "Work_Hours_Per_Week": hours,
-        "Monthly_Salary": budget,
         "Education_Level": education,
-        "Resigned": resigned,
-        "Team_Size": team_size,
-        "Overtime_Hours": overtime
+        "Resigned": True if resigned == "Yes" else False,
+        "Promotions": int(promotions),
+        
+        # Work
+        "Department": department,
+        "Years_At_Company": float(years_at_company),
+        "Work_Hours_Per_Week": float(hours),
+        "Monthly_Salary": float(budget),
+        "Team_Size": int(team_size),
+        "Projects_Handled": int(projects),
+        "Overtime_Hours": float(overtime),
+        "Sick_Days": float(sick_days),
+        "Remote_Work_Frequency": float(remote_freq),
+        "Training_Hours": float(training),
+        
+        # Performance
+        "Employee_Satisfaction_Score": float(satisfaction)
     }
 
     try:
-        response = requests.post("http://127.0.0.1:5000/predict", json=input_data)
-        result = response.json()
+        response = requests.post("http://127.0.0.1:5002/predict", json=input_data, timeout=6)
 
-        if "prediction" in result:
-            st.success(f"✅ Predicted Performance Score: {result['prediction']}")
+        # If server returned a non-2xx status, surface text
+        if not response.ok:
+            # try to parse JSON error, otherwise show raw text
+            try:
+                err = response.json()
+                st.error(f"⚠️ API Error ({response.status_code}): {err.get('message') or err}")
+            except Exception:
+                st.error(f"⚠️ API Error ({response.status_code}): {response.text}")
         else:
-            st.error(f"⚠️ API Error: {result.get('error', 'Unknown error')}")
+            # Try to decode JSON safely
+            try:
+                result = response.json()
+            except ValueError as e:
+                st.error(f"❌ Connection error: invalid JSON response: {e}\nResponse text: {response.text}")
+            else:
+                if result.get("status") == "success" and "prediction" in result:
+                    st.success(f"✅ Predicted Performance Score: {result['prediction']}")
+                else:
+                    st.error(f"⚠️ API Error: {result.get('message') or result}")
 
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         st.error(f"❌ Connection error: {e}")
 
 # ---------------- OPTIONAL: VISUALIZATION ----------------

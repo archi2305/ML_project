@@ -1,116 +1,121 @@
-# ---------------------------------------------
-# Corporate Resource Optimization - ML Pipeline (Final Stable Version)
-# ---------------------------------------------
+# ===============================================
+# main.py — Corporate Resource Optimization ML Model
+# ===============================================
+
+import os
 import pandas as pd
 import numpy as np
+import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.ensemble import RandomForestClassifier
-import joblib
-import matplotlib.pyplot as plt
-import os
+from sklearn.metrics import classification_report, accuracy_score
+from imblearn.over_sampling import SMOTE
 
-# ---------------- PATHS ----------------
-DATA_PATH = "data/Extended_Employee_Performance_and_Productivity_Data.csv"
-OUTPUT_FOLDER = "processed_data"
-MODEL_FOLDER = "models"
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-os.makedirs(MODEL_FOLDER, exist_ok=True)
+# ---------------- CONFIG ----------------
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+DATA_PATH = os.path.join(BASE_DIR, "data", "employee_data.csv")  # <-- replace with your CSV name
+MODEL_PATH = os.path.join(BASE_DIR, "models", "Decision_Tree_model.pkl")
+PROCESSED_DIR = os.path.join(BASE_DIR, "processed_data")
+
+RANDOM_STATE = 42
+os.makedirs(PROCESSED_DIR, exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, "models"), exist_ok=True)
 
 # ---------------- LOAD DATA ----------------
+print("📂 Loading dataset...")
 df = pd.read_csv(DATA_PATH)
-print("✅ Dataset loaded successfully:", df.shape)
-print("\n🔍 Columns in dataset:\n", df.columns.tolist())
+print(f"✅ Dataset loaded successfully: {df.shape}")
 
-# Drop irrelevant columns
-irrelevant_cols = ['Employee_ID', 'Job_Title', 'Hire_Date']
-df_cleaned = df.drop(columns=irrelevant_cols, errors='ignore')
+# ---------------- CLEAN DATA ----------------
+print("\n🧹 Cleaning data...")
 
-# Handle missing data
-df_cleaned.dropna(inplace=True)
-print("✅ Data cleaned:", df_cleaned.shape)
+# Drop irrelevant/unnecessary columns (keep only useful features)
+df_cleaned = df.drop(columns=[
+    'Employee_ID', 'Hire_Date', 'Job_Title'
+], errors='ignore')
 
-# ---------------- SELECT CORRECT COLUMNS ----------------
-# Based on your dataset, these columns exist:
-hours_col = 'Work_Hours_Per_Week'
-budget_col = 'Monthly_Salary'
+# Fill missing values
+df_cleaned = df_cleaned.fillna(df_cleaned.mean(numeric_only=True))
+
+print(f"✅ Data cleaned: {df_cleaned.shape}")
+print("Columns:", df_cleaned.columns.tolist())
 
 # ---------------- FEATURE ENGINEERING ----------------
-df_cleaned['Efficiency'] = df_cleaned[hours_col] / (df_cleaned[budget_col] + 0.1)
-df_cleaned['WorkBudgetRatio'] = df_cleaned[hours_col] * df_cleaned[budget_col]
-df_cleaned['EngagementScore'] = (
-    df_cleaned['Projects_Handled'] +
-    df_cleaned['Training_Hours'] -
-    df_cleaned['Sick_Days'] +
-    df_cleaned['Overtime_Hours']
-)
-print("\n✅ Feature Engineering Added: ['Efficiency', 'WorkBudgetRatio', 'EngagementScore']")
+# Create additional meaningful features
+if 'Work_Hours_Per_Week' in df_cleaned.columns and 'Monthly_Salary' in df_cleaned.columns:
+    df_cleaned['Efficiency'] = df_cleaned['Monthly_Salary'] / (df_cleaned['Work_Hours_Per_Week'] + 1)
 
-# ---------------- ENCODE CATEGORICAL FEATURES ----------------
-text_features = ['Department', 'Gender', 'Education_Level', 'Resigned']
-df_processed = pd.get_dummies(df_cleaned, columns=text_features, drop_first=True)
-print("\n✅ Encoding done. Columns:")
-print(df_processed.columns)
+# Encode categorical columns
+categorical_cols = ['Department', 'Gender', 'Education_Level', 'Resigned']
+for col in categorical_cols:
+    if col in df_cleaned.columns:
+        df_cleaned[col] = df_cleaned[col].astype('category').cat.codes
 
-print("\nDistribution of Performance_Score:")
-print(df_processed['Performance_Score'].value_counts())
+# ---------------- SPLIT DATA ----------------
+target_col = 'Performance_Score'
+if target_col not in df_cleaned.columns:
+    raise KeyError("❌ 'Performance_Score' column missing in dataset!")
 
-# ---------------- SPLIT FEATURES & TARGET ----------------
-y = df_processed['Performance_Score']
-X = df_processed.drop(columns=['Performance_Score'])
+X = df_cleaned.drop(columns=[target_col])
+y = df_cleaned[target_col]
 
-# ---------------- TRAIN TEST SPLIT ----------------
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.15, random_state=42, stratify=y
+    X, y, test_size=0.15, random_state=RANDOM_STATE, stratify=y
 )
-print(f"\nTrain shape: {X_train.shape}, Test shape: {X_test.shape}")
 
-# ---------------- SCALE FEATURES ----------------
+print("\n✅ Data split complete.")
+print("Training data:", X_train.shape, "Test data:", X_test.shape)
+
+# ---------------- HANDLE IMBALANCE (SMOTE) ----------------
+print("\n⚖️ Applying SMOTE to balance classes...")
+smote = SMOTE(random_state=RANDOM_STATE)
+X_train_bal, y_train_bal = smote.fit_resample(X_train, y_train)
+
+print("Before SMOTE:", y_train.value_counts().to_dict())
+print("After SMOTE:", y_train_bal.value_counts().to_dict())
+
+# ---------------- SCALE ----------------
+print("\n📏 Scaling features...")
 scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
+X_train_scaled = scaler.fit_transform(X_train_bal)
 X_test_scaled = scaler.transform(X_test)
 
-# ---------------- TRAIN MODEL (RandomForest Classifier) ----------------
-print("\n🚀 Training RandomForest model...")
+# ---------------- TRAIN MODEL ----------------
+print("\n🚀 Training RandomForestClassifier...")
 model = RandomForestClassifier(
-    n_estimators=200,
-    max_depth=12,
-    min_samples_split=5,
+    n_estimators=300,
+    max_depth=15,
+    min_samples_split=4,
     min_samples_leaf=2,
-    random_state=42,
+    random_state=RANDOM_STATE,
     n_jobs=-1
 )
-
-model.fit(X_train_scaled, y_train)
-print("✅ Model training complete!")
+model.fit(X_train_scaled, y_train_bal)
 
 # ---------------- EVALUATE MODEL ----------------
 y_pred = model.predict(X_test_scaled)
+
 accuracy = accuracy_score(y_test, y_pred)
-print(f"\n✅ Model Accuracy: {round(accuracy*100,2)}%")
-print("\nClassification Report:\n", classification_report(y_test, y_pred))
+print(f"\n✅ Model Accuracy: {accuracy * 100:.2f}%\n")
+print("Classification Report:\n", classification_report(y_test, y_pred))
 
-# ---------------- CONFUSION MATRIX ----------------
-cm = confusion_matrix(y_test, y_pred)
-disp = ConfusionMatrixDisplay(confusion_matrix=cm)
-disp.plot(cmap='Blues')
-plt.title("Performance Score Prediction - Confusion Matrix")
-plt.show()
+# ---------------- SAVE ARTIFACTS ----------------
+print("\n💾 Saving model, scaler, and columns...")
 
-# ---------------- SAVE OUTPUTS ----------------
-joblib.dump(model, os.path.join(MODEL_FOLDER, "Decision_Tree_model.pkl"))
-joblib.dump(scaler, os.path.join(OUTPUT_FOLDER, "scaler.joblib"))
-joblib.dump(X.columns.tolist(), os.path.join(OUTPUT_FOLDER, "columns.joblib"))
+joblib.dump(model, MODEL_PATH)
+joblib.dump(scaler, os.path.join(PROCESSED_DIR, "scaler.joblib"))
+joblib.dump(X.columns.tolist(), os.path.join(PROCESSED_DIR, "columns.joblib"))
 
-np.save(os.path.join(OUTPUT_FOLDER, 'X_train_scaled.npy'), X_train_scaled)
-np.save(os.path.join(OUTPUT_FOLDER, 'X_test_scaled.npy'), X_test_scaled)
-y_train.to_csv(os.path.join(OUTPUT_FOLDER, 'y_train.csv'), index=False)
-y_test.to_csv(os.path.join(OUTPUT_FOLDER, 'y_test.csv'), index=False)
+# Also save train-test splits (optional)
+np.save(os.path.join(PROCESSED_DIR, "X_train_scaled.npy"), X_train_scaled)
+np.save(os.path.join(PROCESSED_DIR, "X_test_scaled.npy"), X_test_scaled)
+y_train.to_csv(os.path.join(PROCESSED_DIR, "y_train.csv"), index=False)
+y_test.to_csv(os.path.join(PROCESSED_DIR, "y_test.csv"), index=False)
 
-print("\n💾 Files saved successfully!")
-print(f"Model Path: {MODEL_FOLDER}/Decision_Tree_model.pkl")
-print(f"Scaler Path: {OUTPUT_FOLDER}/scaler.joblib")
-print(f"Columns Path: {OUTPUT_FOLDER}/columns.joblib")
+print("\n✅ Model, Scaler, and Columns saved successfully!")
+print(f"📁 Model Path: {MODEL_PATH}")
+print(f"📁 Scaler Path: {os.path.join(PROCESSED_DIR, 'scaler.joblib')}")
+print(f"📁 Columns Path: {os.path.join(PROCESSED_DIR, 'columns.joblib')}")
 
-print("\n🎯 Model ready for integration with Flask API and Streamlit Dashboard!")
+print("\n🎯 Training pipeline complete.")
